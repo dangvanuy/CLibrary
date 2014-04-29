@@ -1,0 +1,5 @@
+all: sample_join
+sample_join:
+	g++ -o sample_join sample_join.cpp -Wall -Werror -lpthread
+clean:
+	rm -rf sample_join
