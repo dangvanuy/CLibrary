@@ -26,4 +26,20 @@ git checkout
 ex:
 [uydang@sv-linuxcentos71 CLibrary]$ git checkout
 M       thread/readme.txt
+
+#lay code ve khi file local bi mat
+git checkout -- file
+	vidu: git checkout -- mtest.c
+
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
 	
