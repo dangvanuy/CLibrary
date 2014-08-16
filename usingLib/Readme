@@ -1,0 +1,37 @@
+1. In exampleA
+	TestApp using func in lib libadvance.so(lib of advancelib.cpp),
+	advancelib.cpp using func in lib libbasic.so(lib from basiclib.cpp)
+	
+	in make file of advancelib.cpp, include lib of basiclib.cpp
+	in make file of TestApp.cpp, include lib of advancelib.cpp
+	AND TestApp.cpp DO NOT INCLUDE LIB OF basiclib.cpp
+	
+	When complate TestApp.cpp, meet error:
+	
+	g++ -o TestApp -I../lib -Wl,-rpath-link -Wl,../lib -Wl,-rpath-link -Wl, -L../lib -ladvance TestApp.cpp
+	/usr/bin/ld: warning: libbasic.so, needed by ../lib/libadvance.so, not found (try using -rpath or -rpath-link)
+	../lib/libadvance.so: undefined reference to `libBasic_funA()'
+	
+2. In exampleB
+	The same with SampleA but 
+	TestApp.cpp INCLUDE LIB OF basiclib.cpp
+	When complate TestApp.cpp Ok, not error.
+
+Tom lai:
+Right:
+	
+	./TestApp -- libadvance.h  -- libbasic.h
+	(FUNCB)	|				  |
+			|                  - libbasic.so <- libBasic_funA(){ printf("FUNC in LIBA");}
+			 - libadvance.so <-FUNCB(){libBasic_funA();}
+			|
+			 - libbasic.so
+			
+			
+Wrong:
+	TestApp	-- libadvance.h -- libbasic.h
+			|				|
+			|                - libbasic.so
+			-- libadvance.so
+			
+			
