@@ -20,7 +20,8 @@ export UCLINUX_KERNEL=$SDK_DIR_SOURCE/kernel/linux
 
 
 
-sdk=/working/kenvi/uydang/867x/8674/4.0.0/TestForChaitu/sdk
+#sdk=/working/kenvi/uydang/867x/8674/4.0.0/TestForChaitu/sdk
+sdk=/working/kenvi/uydang/867x/8674/4.0.0/sctv/sdk
 
 cd $sdk/mrua
 source build.env 
@@ -28,7 +29,7 @@ source build.env
 cd $sdk/dcchd
 source DCCHD.env black
 
-code=/working/kenvi/uydang/Test/prac/CLibrary/Thread
+code=/working/kenvi/uydang/Test/prac/CLibrary/thread
 cd $code/duplicate_ir_buffer_full
 
 

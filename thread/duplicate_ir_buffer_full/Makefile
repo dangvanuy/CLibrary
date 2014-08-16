@@ -20,6 +20,9 @@ else
 	        DFB_DIR = $(DIRECTFB_DIR)/directfb
 endif
 
+mediasetting = medialib/mediasetting
+mediasetting_dir = medialib/mediasetting/mediasettinglib
+
 
 USE_STD_LIB := 1
 
@@ -58,7 +61,10 @@ RMCFLAGS += \
 	-DALLOW_OS_CODE	\
 	-D_REENTRANT \
 	-I. -I./include \
-	-I./remote
+	-I./remote	\
+	-I$(mediasetting_dir)	\
+	-I$(mediasetting_dir)/include	\
+	-I$(mediasetting_dir)/include/dtv
 
 
 RMCFLAGS += -DXMD_H=1
@@ -91,7 +97,8 @@ MAIN_SRC = MainApp.cpp
 SRC =	\
 	./remote/remote.c
 
-
+	
+LDFLAGS += -L$(mediasetting) -lmediasetting
 
 EXTERNAL_STATIC_LINKS_WITH += 				\
         $(DCCHD_DIR)/dtv/libdcchd_dtv.so                \

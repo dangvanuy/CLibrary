@@ -11,13 +11,13 @@
 #include <sys/ioctl.h>
 #include <pthread.h> //for thread
 #include <fcntl.h>
-#include "remote.h"
 
-//#define Test 1
+//#include "emhwlib_hal/include/emhwlib_registers.h"
+#include "llad/include/gbus.h"
+#include "tuner/helper/helper.h"
 
-#ifndef Test
 #include "directfb.h"
-#endif
+#include "remote.h"
 
 #define SMP_REMOTE_DEV "/dev/ir"
 unsigned flags = O_RDONLY;
@@ -27,6 +27,17 @@ struct timeval tv;
 int ret;
 void (*pFUNC_Global_Handle)(unsigned long) = NULL;
 
+/*
+void (*pFUNC_callbackmain)(int) = NULL;
+void initCallBackMain(void *pFunc )
+{
+	pFUNC_callbackmain = pFunc;
+}
+void call_func_from_main()
+{
+	pFUNC_callbackmain();
+}
+*/
 void *smp_remote_event_thread(void *n)
 {
     union {
@@ -83,6 +94,7 @@ int driver_open_device() {
 	return status;
 }
 
+
 void run_remote()
 {
 	if ((fno = open(SMP_REMOTE_DEV, flags)) < 0) {
@@ -106,39 +118,72 @@ void stop_remote()
 	close(fno);
 	printf("Close remote\n");
 }
+
+/*//////////////////////////////// directfb */
+extern int 	keyfd;
+void *smp_remote_event_thread_dfb(void *n)
+{
+	printf("keyfd = %d\n", keyfd);
+	while(1){		
+		DFBEvent evt;
+        //Initialize the file descriptor set. 
+        fd_set set;
+        
+        FD_ZERO (&set);
+        FD_SET (keyfd, &set);
+        // select returns 0 if timeout, 1 if input available, -1 if error. 
+        struct timeval timeout = {0, 100000};
+		memset(&evt,0,sizeof(evt));
+        select (FD_SETSIZE, &set, NULL, NULL, &timeout);
+		if (FD_ISSET(keyfd, &set))
+		{
+			read(keyfd, &evt, sizeof(evt));
+			//evt = get_event();
+			
+			
+			if ( evt.clazz == DFEC_INPUT )
+			{
+				if (pFUNC_Global_Handle != NULL ){
+					if (evt.input.type != DIET_KEYRELEASE){
+						if (evt.input.key_symbol == Key_POWER){
+							printf("Power Off >> good bye\n");
+							break;
+						}
+						printf("Press key: %u\n", evt.input.key_symbol);
+						pFUNC_Global_Handle(evt.input.key_symbol);
+					}
+				} else {
+					printf("pFUNC_Global_Handle IS NULL\n");
+				}
+			}
+		}
+	}
+	printf("\nThread is exit");
+	return NULL;
+}
+
+pthread_t var_thread_dfb;
+void run_remote_dfb()
+{
+	printf(">>>>>>>>>>>>>>> Start run_remote_dfb\n");
+	pthread_create(&var_thread_dfb, NULL, smp_remote_event_thread_dfb, NULL);
+}
+
+void stop_remote_dfb()
+{
+	pthread_join(var_thread_dfb, NULL);
+	printf("Close remote\n");
+}
+
 void set_handle(void *handle)
 {
 	pFUNC_Global_Handle = handle;
 }
 
-#if 0
-void main_handle(unsigned long key)
-{
-	switch (key) {
-		case Key_ENTER:
-			printf("Enter >> \n");
-			break;
-		case Key_LEFT:
-			printf("Left >> \n");
-			break;
-		case Key_RIGHT:
-			printf("Right >> \n");
-			break;
-		case Key_UP:
-			printf("Up >> \n");
-			break;
-		case Key_DOWN:
-			printf("Down >> \n");
-			break;
-	}
-}
-int main()
-{
-	set_handle(main_handle);
-	run_remote();
-	return 0;
-}
-#endif
+
+
+
+
 
 
 

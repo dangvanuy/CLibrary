@@ -35,7 +35,7 @@
 #define USE_POWER_LED
 
 #define KEY_RED
-//#define DEBUG_IR
+#define DEBUG_IR
 //#define ALL_KEYS_REPEATABLE
 #define DEBUG_RED_KEY
 #define SYS_gpio_base		SYS_gpio_dir
@@ -1132,10 +1132,9 @@ static int ir_findkey(struct ir_private *priv, unsigned long key)
 /* Produce data */
 static void ir_produce(struct ir_private *priv, unsigned long status)
 {
-	
 	static int power_key_count = 0;
 	static int red_key_count = 0;
-	static unsigned long power_key_lastcounted = 0;
+//	static unsigned long power_key_lastcounted = 0;
 	static unsigned long old_key = 0;
 	static unsigned long save_key = 0;
 	unsigned long data = 0;
@@ -1155,6 +1154,8 @@ static void ir_produce(struct ir_private *priv, unsigned long status)
 		dx[2] = gbus_read_reg32(IR_RC6_DATA_OUT2);
 		dx[3] = gbus_read_reg32(IR_RC6_DATA_OUT3);
 		dx[4] = gbus_read_reg32(IR_RC6_DATA_OUT4);
+		printk(KERN_DEBUG "D0-4: 0x%08lx 0x%08lx 0x%08lx 0x%08lx 0x%08lx\n", dx[0],
+						dx[1], dx[2], dx[3], dx[4]);
 #ifdef DEBUG_IR
 		printk(KERN_DEBUG "D0-4: 0x%08lx 0x%08lx 0x%08lx 0x%08lx 0x%08lx\n", dx[0], 
 				dx[1], dx[2], dx[3], dx[4]);
@@ -1207,6 +1208,8 @@ static void ir_produce(struct ir_private *priv, unsigned long status)
 			/* Keep the latest one and drop the oldest ones */
 			priv->c_idx = (priv->c_idx + 5) % buffer_size;
 			printk(KERN_WARNING "%s: buffer full\n", ir_devname);
+		}else {
+			printk("%s: No Buffer full\n", ir_devname);
 		}
 
 		priv->buffer[priv->p_idx] = dx[0];
@@ -1232,8 +1235,11 @@ static void ir_produce(struct ir_private *priv, unsigned long status)
 	if (status & 0x00000001) {	// RC5 IRQ
 		data = gbus_read_reg32(IR_RC5_DECODER_DATA);
 		gbus_write_reg32(IR_RC5_DECODER_DATA, 0);
-		if ((data & 0x80000000) != 0)  /* Invalid RC5 decoder data */
+		printk("ir_produce data = 0x%08lx\n", data);
+		if ((data & 0x80000000) != 0){  /* Invalid RC5 decoder data */
+			printk("Invalid RC5 decoder data = 0x%08lx\n", data);
 			goto out;
+		}
 	} else if (status & 0x00000002) {	// NEC IRQ
 		data = gbus_read_reg32(IR_NEC_CAPTURE_DATA);
 		gbus_write_reg32(IR_NEC_CAPTURE_DATA, 0);
@@ -1251,7 +1257,7 @@ static void ir_produce(struct ir_private *priv, unsigned long status)
 		old_key = 0;
 		
 #ifdef DEBUG_IR
-		printk(KERN_DEBUG "%s: no data\n", ir_devname);
+		//printk(KERN_DEBUG "%s: no data\n", ir_devname);
 #endif
 
 #ifdef USE_POWER_CHIP
@@ -1261,12 +1267,12 @@ static void ir_produce(struct ir_private *priv, unsigned long status)
 
 		if (time_after(priv->last_jiffies + wp_var, jiffies)) {
 #ifdef DEBUG_IR
-			printk(KERN_DEBUG "%s: repetition too fast\n", ir_devname);
+			//printk(KERN_DEBUG "%s: repetition too fast\n", ir_devname);
 #endif
 			goto out; 	/* Key repeats too fast, drop it */
 		} else if (time_before(priv->last_jiffies + (wait_jiffies * 4), jiffies)) {
 #ifdef DEBUG_IR
-			printk(KERN_DEBUG "%s: got slow repetition, glitch?\n", ir_devname);
+			//printk(KERN_DEBUG "%s: got slow repetition, glitch?\n", ir_devname);
 #endif
 			save_key = 0;	/* Disallow key repitition */
 			goto out;	/* Repeat too slow, drop it */
@@ -1321,7 +1327,7 @@ static void ir_produce(struct ir_private *priv, unsigned long status)
 	} 
 	else{
 		if ((data == DIKS_POWER_SCTV) || (data == DIKS_POWER_HW) || (data == DIKS_POWER_SD) || (data == DIKS_RED_SD) || (data == DIKS_RED_SCTV)){
-			//printk(KERN_DEBUG "\033[32m ================== SetAutoLED power_key_count = %d\n \033[0m", power_key_count);
+			printk(KERN_DEBUG "\033[32m ================== SetAutoLED power_key_count = %d\n \033[0m", power_key_count);
 			SetAutoLED();
 			power_key_count = 0;
 			red_key_count = 0;
@@ -1373,7 +1379,9 @@ static void ir_produce(struct ir_private *priv, unsigned long status)
 
 	priv->buffer[priv->p_idx] = data;
 	priv->p_idx = (priv->p_idx + 1) % buffer_size;
-
+	
+	printk(KERN_WARNING "%s: buffer[%d] = 0x%08lx, buffer_size = %d\n", ir_devname,priv->p_idx, data, buffer_size);
+	
 	/* Buffer was empty and block mode is on, wake up the reader */
 	if (priv->c_idx == pidx)
 		wake_up_interruptible(&ir_wq);
@@ -1391,7 +1399,7 @@ static irqreturn_t ir_isr(int irq, void *dev_id)
 	if (priv != &ir_priv)		/* Paranoid check */
 		return IRQ_NONE;
 
-	// gbus_write_reg32(REG_BASE_CPU + CPU_edge_rawstat, IRQMASKOF(ir_irq));
+	//gbus_write_reg32(REG_BASE_CPU + CPU_edge_rawstat, IRQMASKOF(ir_irq));
 	
 	if ((gbus_read_reg32(IR_RC5_CTRL) & (1 << 4)) == 0) /* NEC is enabled */
 		enabled = 1;
@@ -1419,7 +1427,6 @@ static irqreturn_t ir_isr(int irq, void *dev_id)
 #ifdef DEBUG_IRx
 			printk(KERN_DEBUG "RC6 Datain IRQ (0x%08lx)\n", status);
 #endif
-			printk("ir_produce A\n");
 			ir_produce(priv, status);
 
 #ifdef WITH_RC5_CONTROL
@@ -1449,7 +1456,6 @@ static irqreturn_t ir_isr(int irq, void *dev_id)
 	status &= 0x00000003;
 #endif /* WITH_RC5_CONTROL */
 
-	printk("ir_produce B\n");
 	ir_produce(priv, status);
 	return IRQ_HANDLED;
 }

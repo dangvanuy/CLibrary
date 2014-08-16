@@ -30,24 +30,40 @@ export MRUAFW_PACKAGE_DIR="/working/kenvi/uydang/867x/8674/4.0.0/dvbs2/sdk/mruaf
 
 
 
-export sdk=/working/kenvi/uydang/867x/8674/4.0.0/TestForChaitu/sdk
+#export sdk=/working/kenvi/uydang/867x/8674/4.0.0/TestForChaitu/sdk
+export sdk=/working/kenvi/uydang/867x/8674/4.0.0/sctv/sdk
 
 cd $sdk/mrua
 source run.env
 unload_imat.bash
 fw_reload
 
-#modprobe irkernel
 
 cd $sdk/dcchd
 source trun.env
 
-code=/working/kenvi/uydang/Test/prac/CLibrary/Thread
+code=/working/kenvi/uydang/Test/prac/CLibrary/thread
 cd $code
 
 
 cd $code/duplicate_ir_buffer_full
-rmmod kernelir
-insmod irkernel/kernelir.ko wait_period=300
 
-./MainApp&
+modprobe irkernel
+#rmmod kernelir
+#insmod irkernel/kernelir.ko wait_period=300
+
+source run.env
+
+./MainApp &
+
+./app_launcher&
+
+killall -9 MainApp
+./app_launcher
+
+killall -9 app_launcher
+killall -9 MainApp
+rm -rf /tmp/loading.txt
+./app_launcher&
+
+echo 1 > /tmp/loading.txt
