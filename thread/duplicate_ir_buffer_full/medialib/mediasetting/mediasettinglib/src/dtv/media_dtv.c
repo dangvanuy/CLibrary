@@ -1,0 +1,1068 @@
+
+#include "dtv_define.h"
+
+#ifdef WITH_SUBTITLE
+#define SCALE_UP(x) ((x*3)/2)
+#define SUBTITLE_WIDTH	     720
+#define SUBTITLE_HEIGHT      560
+
+IDirectFB				*dfb = NULL;
+IDirectFBWindow         *window_osd = NULL;
+IDirectFBSurface		*surface_osd = NULL;
+IDirectFBWindow			*window_osd_subtitle = NULL;
+IDirectFBSurface		*surface_osd_subtitle = NULL;
+IDirectFBSurface		*stt_offscreen_surface = NULL;
+RMuint8 cur_volume = 50;
+#endif      // WITH_SUBTITLE
+struct	SMediaSpaceCmdDefinition m_MediaRuntimeCMd ;
+
+
+/********************************************************************************************************************
+ ** Functions  ******************************************************************************************************
+ ********************************************************************************************************************/
+void set_sub_screen_rect(int pos)
+{
+	isSetPiPRect = true;
+	switch(pos)
+	{
+	case PIP_SHOW_TOP_LEFT:
+		printf("\n PIP_SHOW_TOP_LEFT");
+		pip_x = 0;
+		pip_y = 0;	
+		break;
+
+	case PIP_SHOW_TOP_RIGHT:
+		printf("\n PIP_SHOW_TOP_RIGHT");
+		pip_x = 3*xres/4;
+		pip_y = 0;
+		break;
+
+	case PIP_SHOW_BOTTOM_LEFT:
+		printf("\n PIP_SHOW_BOTTOM_LEFT");
+		pip_x = 0;
+		pip_y = 3*yres/4;	
+		break;
+
+	case PIP_SHOW_BOTTOM_RIGHT:
+		printf("\n PIP_SHOW_BOTTOM_RIGHT");
+		pip_x = 3*xres/4; 
+		pip_y = 3*yres/4;
+		break;
+
+	default:
+		isSetPiPRect = false;
+		break;
+	}
+
+}
+
+
+/**
+ * 
+ * <b>FUNCTION: </b>
+ *
+ * void SetWndRect(int ampIdx, 
+ *  			   long double x, long double y,
+ * 				   int w, int h)
+ * <b>DESCRIPTION: </b>
+ * @param
+ *  	int ampIdx, long double x, long double y, int w, int h
+ * @return 
+ *      void
+**/
+void set_wnd_rect(int ampIdx, long double x, long double y, int w, int h)
+{
+	if(amp_table[ampIdx].layer){
+		printf("\n SetWndRect:: ampIndex = %d - START SetScreenRectangle",ampIdx);
+		amp_table[ampIdx].layer->SetScreenRectangle(amp_table[ampIdx].layer, x, y, w, h);
+	}
+	else{
+		printf("\n SetWndRect:: ampIndex = %d - CAN NOT SetScreenRectangle",ampIdx);
+	}
+}
+
+//static int tempQ = 0;
+
+/**
+ * 
+ * <b>FUNCTION: </b>
+ *
+ * void SetDefaultWndRect(void)
+ * <b>DESCRIPTION: </b>
+ * @param
+ * 		int ampIndex,
+ * 		long double x, long double y,
+ *		int w, int h
+ * @return 
+ *      void
+**/
+void set_default_wnd_rect(int ampIdx)
+{
+	if(amp_table[ampIdx].layer)
+		amp_table[ampIdx].layer->SetScreenRectangle(amp_table[ampIdx].layer, 
+													  SEC_WINDOW_ON_OSD_POSX, 
+													  SEC_WINDOW_ON_OSD_POSY, 
+													  SEC_WINDOW_ON_OSD_WIDTH, 
+	 												  SEC_WINDOW_ON_OSD_HEIGHT);
+	
+}
+
+/**
+ * 
+ * <b>FUNCTION: </b>
+ *
+ * void swap_amp(int ampIdx)
+ * <b>DESCRIPTION: </b>
+ * @param
+ * 		int ampIdx
+ * @return 
+ *      void
+**/
+void swap_amp(int ampIdx, int showPos)
+{
+	set_sub_screen_rect(showPos);
+	set_active_amp(ampIdx, true, true);
+	isSetPiPRect = false;
+}
+
+/********************************************************************************************************************
+ ** Functions for playing and stop channel for dtv ******************************************************************
+ ********************************************************************************************************************/
+/**
+ * 
+ * <b>FUNCTION: </b>
+ *
+ * void send_set_play(int ampIndex)
+ *
+ * <b>DESCRIPTION: </b>
+ * 		
+ * 
+ * @param
+ *  	int ampIndex
+ * @return 
+ *      void
+**/
+void send_set_play(int ampIndex)
+{
+	set_play(ampIndex);
+}
+
+/**
+ * 
+ * <b>FUNCTION: </b>
+ *
+ * void send_set_stop(int ampIndex)
+ *
+ * <b>DESCRIPTION: </b>
+ * 		
+ * 
+ * @param
+ *  	int ampIndex
+ * @return 
+ *      void
+**/
+void send_set_stop(int ampIndex)
+{
+	set_stop(ampIndex);
+}
+
+
+/**
+ * 
+ * <b>FUNCTION: </b>
+ *
+ * RMstatus play_dtv(int ampIdx)
+ *
+ * <b>DESCRIPTION: </b>
+ * 		Set playing media for dtv
+ * 
+ * @param
+ *  	int ampIdx
+ * @return 
+ *      RMstatus
+**/
+RMstatus play_dtv(int ampIndex)
+{
+	D_INFO("\n PlayDtv ampIndex = %d",ampIndex);
+	if (is_amp_opened(ampIndex)) {
+		D_INFO("Amp already opened \n");
+		send_set_play(ampIndex);
+	}
+	else {
+		init_amp(ampIndex);
+	}
+	return RM_OK;
+}
+
+/**
+ * 
+ * <b>FUNCTION: </b>
+ *
+ * RMstatus open_dtv_media(char* pOpenParam, char* 
+ *  pFileName, int ampIdx)
+ *
+ * <b>DESCRIPTION: </b>
+ * 		Open media for dtv
+ * 
+ * @param
+ *  	char* pOpenParam, char* pFileName, int *ampIdx
+ * @return 
+ *      RMstatus
+**/
+RMstatus play_a_program(int ampIdx, int vPid, int vType, int aPid, int aType, int pcrPid)
+{
+	PESDescriptor_t PesDesc1,PesDesc2;
+	unsigned short Pid;
+
+	PesDesc1.Pid = 0x1FFF;
+	PesDesc2.Pid = 0x1FFF;
+	Pid			 = 0x1FFF;
+	PesDesc1.EcmPid = 0x1FFF;
+	PesDesc2.EcmPid = 0x1FFF;
+	PesDesc1.Type = 0;
+	PesDesc2.Type = 0;
+	PesDesc1.Cipher = (CipherType_t)0;
+	PesDesc2.Cipher = (CipherType_t)0;
+
+	//video 
+	PesDesc1.Pid  = vPid;
+	PesDesc1.Type = vType;
+	//Audio
+	PesDesc2.Pid = aPid;
+	PesDesc2.Type= aType;
+	//pcr
+	Pid = pcrPid;
+
+	D_INFO("set_playProgram: vpid: 0x%X, Vtype:0x%X, apid: 0x%X, Atype: 0x%X, PCR: 0x%X \n", 
+			PesDesc1.Pid, PesDesc1.Type, PesDesc2.Pid, PesDesc2.Type, Pid);
+
+	set_AV_source(ampIdx, PesDesc1, PesDesc2, Pid);
+	usleep(500000);
+	set_play(ampIdx);
+
+	return RM_OK;
+}
+
+/********************************************************************************************************************
+ ** Functions to open and close amp for dtv *************************************************************************
+ ********************************************************************************************************************/
+/**
+ * 
+ * <b>FUNCTION: </b>
+ *
+ * int print_amps_opened(int i)
+ *
+ * <b>DESCRIPTION: </b>
+ * 		Check to see if amp is opened
+ * 
+ * @param
+ *  	int i
+ * @return 
+ *      int
+**/ 
+void print_amps_opened(void)
+{
+	int i;
+	printf("\n \033[35m ================================================ \033[0m");
+	printf("\n \033[35m LIST OF THE OPENED AMPS: \033[0m");
+	printf("\n \033[35m ================================================ \033[0m");
+	for (i = 0; i < MAX_AMP_INSTANCES; i++)
+	{
+		if (mediaTab[i].isOpen == TRUE)
+		{
+			printf("\n \033[35m AMPINDEX = %d OPENED\033[0m",i);
+		}
+		else{
+			printf("\n \033[35m AMPINDEX = %d NOT OPENED\033[0m",i);
+		}
+	}
+	printf("\n \033[35m ================================================ \033[0m");
+}
+
+
+/**
+ * 
+ * <b>FUNCTION: </b>
+ *
+ * int is_amp_opened(int i)
+ *
+ * <b>DESCRIPTION: </b>
+ * 		Check to see if amp is opened
+ * 
+ * @param
+ *  	int i
+ * @return 
+ *      int
+**/ 
+int is_amp_opened(int i)
+{
+	D_INFO("\n \033[31m is_amp_opened IndexAMP = %i, mediaTab[i].isOpen = %d, \033[0m\n", i, mediaTab[i].isOpen);
+	if (mediaTab[i].amp && mediaTab[i].isOpen) 
+		return TRUE;
+	
+	return FALSE;
+}
+
+
+/**
+ * 
+ * <b>FUNCTION: </b>
+ *
+ * RMstatus set_open_param(const char *pOpenParam)
+ *
+ * <b>DESCRIPTION: </b>
+ * 		Set Open Param
+ * 
+ * @param
+ *  	const char *pOpenParam,
+ * @return 
+ *      RMstatus
+**/ 
+
+RMstatus set_open_param(const char *pOpenParam)
+{
+	struct SMediaSession *media = &mediaTab[mediaCnt-1];
+	media->openParam = (void *)(pOpenParam);
+	return RM_OK;
+}
+
+
+/**
+ * 
+ * <b>FUNCTION: </b>
+ *
+ * RMstatus initialze_media_tabs(const char *pOpenParam, 
+ *                               const char *pFileName)
+ *
+ * <b>DESCRIPTION: </b>
+ * 		Initialze MediaTabs
+ * 
+ * @param
+ *  	const char *pOpenParam,
+ *  	const char *pFileName,
+ * 		int ampIndex
+ * @return 
+ *      RMstatus
+**/ 
+
+RMstatus initialze_media_tabs(const char *pOpenParam, const char *pFileName)
+{
+	int MediaCnt;
+	MediaCnt = init_parameter((char*)pFileName,"-dtv");
+	if (MediaCnt < 0)
+	{
+		return RM_ERROR;
+	}
+	set_open_param(pOpenParam);
+	return RM_OK;
+}
+
+
+
+
+/**
+ * 
+ * <b>FUNCTION: </b>
+ *
+ * RMstatus open_dtv_media(char* pOpenParam, char* 
+ *  pFileName, int ampIdx)
+ *
+ * <b>DESCRIPTION: </b>
+ * 		Open media for dtv
+ * 
+ * @param
+ *  	char* pOpenParam, char* pFileName, int *ampIdx
+ * @return 
+ *      RMstatus
+**/
+RMstatus open_dtv_media(char* pOpenParam, char* pFileName, int *ampIdx)
+{
+	int temp_AmpIdx = 0;//mediaCnt; //0; phathv change
+
+	if (!pOpenParam || !pFileName) {
+		D_INFO("invalid parameters \n");
+		return RM_ERROR;
+	}
+	printf("\n \033[31m open_dtv_media \033[0m");
+	D_INFO("\t open_dtv_media: open ampIdx %d [%s, %s] \n", temp_AmpIdx, pOpenParam, pFileName);
+
+	if (initialze_media_tabs(pOpenParam, pFileName) != RM_OK)
+	{
+		//D_INFO(stderr,"Failed to allocate media in media table\n");
+	}
+	*ampIdx = temp_AmpIdx;
+
+    if (!is_amp_opened(temp_AmpIdx))
+	{
+		D_INFO("[%s, %d] You must open media tab with AmpIdx = %d\n", __FILE__, __LINE__,temp_AmpIdx);
+		init_amp(temp_AmpIdx);
+	}
+	
+    set_active_amp(temp_AmpIdx, true, true);
+	set_default_wnd_rect(temp_AmpIdx);
+
+	return RM_OK;
+}
+
+
+/**
+ * 
+ * <b>FUNCTION: </b>
+ *
+ * void CloseDtvAmps(void)
+ *
+ * <b>DESCRIPTION: </b>
+ * 		Close all amps for dtv
+ * 
+ * @param
+ *  	void
+ * @return 
+**/
+void close_all_dtv_amps(void)
+{
+	int i;
+	
+	for (i = MAX_AMP_INSTANCES - 1; i >= 0; i--)
+	{
+		if (mediaTab[i].isOpen == TRUE)
+		{
+			D_INFO("\n \033[35m Close amp %d for DTV \033[0m\n\n", i);
+			ampIndex = i;
+			power_off_amp();
+			print_amps_opened();
+			mediaTab[i].isOpen = FALSE;
+		}else{
+			D_INFO("\n \033[35mamp %d is close \033[0m\n\n", i);
+		}
+	}
+	print_amps_opened();
+}
+
+
+/**
+ * 
+ * <b>FUNCTION: </b>
+ *
+ * void close_dtv_amp(void)
+ *
+ * <b>DESCRIPTION: </b>
+ * 		Close an amp
+ * 
+ * @param
+ *  	void
+ * @return 
+**/
+void close_dtv_amp(int ampIdx)
+{
+	//int i;
+	D_INFO("\n close_dtv_amp ampIdx = %d",ampIdx);
+
+	if (mediaTab[ampIdx].isOpen == TRUE)
+	{
+			ampIndex = ampIdx;
+		power_off_amp();
+		mediaTab[ampIdx].isOpen = FALSE;
+		ampIndex = mediaCnt;
+	}
+}
+
+/**
+ * 
+ * <b>FUNCTION: </b>
+ *
+ * void close_amp_for_pip((int ampIdx)
+ *
+ * <b>DESCRIPTION: </b>
+ * 		Close all amps for dtv
+ * 
+ * @param
+ *  	void
+ * @return 
+**/
+void close_amp_for_pip(int ampIdx)
+{
+	//int i;
+	D_INFO("\n close_dtv_amp ampIdx = %d",ampIdx);
+	ampIndex = ampIdx;
+	power_off_amp();
+	ampIndex = mediaCnt;
+}
+
+
+/********************************************************************************************************************
+ ** Functions for DVR ***********************************************************************************************
+ ********************************************************************************************************************/
+
+/**
+ * 
+ * <b>FUNCTION: </b>
+ *
+ * RMstatus send_set_partial_TSCBF(int ampIndex, void* 
+ *  				pPid, DTVTSDataCBF_t fFunc, RMbool bEnable)
+ *
+ * <b>DESCRIPTION: </b>
+ * 		
+ * 
+ * @param
+ *  	int ampIndex,
+ *  	void* pPid,
+ *  	DTVTSDataCBF_t fFunc,
+ * 		RMbool bEnable
+ * @return 
+ *      RMstatus
+**/
+RMstatus send_set_partial_TSCBF(int ampIndex, void* pPid, DTVTSDataCBF_t fFunc, RMbool bEnable)
+{
+	int i;
+	TSPidArray_t* pTsPids = (TSPidArray_t*) pPid;
+	TSPidArray_t TsPids;
+    PESDescriptor_t PesDesc;
+	DTVTSDataCBF_t fPTSCallback;
+	if (bEnable == TRUE) 
+	{
+		if (pTsPids == NULL || fFunc == NULL) {
+			return RM_ERROR;
+		}
+		memcpy(&TsPids, pTsPids, sizeof(TSPidArray_t));
+		memset(&PesDesc,0,sizeof(PesDesc));
+		PesDesc.Pid = ESP_PID_PTS;
+		PesDesc.Type = 0;
+		PesDesc.Cipher= (CipherType_t)0;
+		PesDesc.EcmPid = 0x1FFF;
+		fPTSCallback = fFunc;
+	}
+	else 
+	{
+		for(i =0;i<MAX_TSPidArray_Size;i++)
+        {
+            TsPids.PidArray[i] = 0x1FFF;
+        }
+        TsPids.VideoPid = 0x1FFF;
+        TsPids.VideoType = 0;
+        TsPids.Size = 0;
+        memset(&PesDesc,0,sizeof(PesDesc));
+        PesDesc.Pid = ESP_PID_PTS; //ESP_PID_PTS + ampIndex;
+        PesDesc.Type = 0;
+        PesDesc.Cipher= (CipherType_t)0;
+        PesDesc.EcmPid = 0x1FFF;
+        fPTSCallback = NULL;
+	}
+	set_partial_TSCBF(ampIndex,TsPids,PesDesc,fPTSCallback);
+	return RM_OK;
+}
+
+
+
+/**
+ * 
+ * <b>FUNCTION: </b>
+ *
+ * void write_TS_file(int ampIdx,void *pBuffer, size_t Size)
+ *
+ * <b>DESCRIPTION: </b>
+ *      Get PMT table
+ *
+ * 
+ * @param
+ *      int ampIdx, void *pBuffer, size_t Size
+ * @return 
+ *      void
+**/
+static FILE *pFile[MAX_AMP_INSTANCES] = {NULL};
+void write_TS_file(int ampIdx,void *pBuffer, size_t Size)
+{
+    char pFileName[16];
+    time_t seconds;
+    seconds = time(NULL);
+
+    snprintf(pFileName, sizeof(pFileName), "SAVE/Save%ld.ts",seconds/60);
+    if(pFile[ampIdx] == NULL)
+    {
+        pFile[ampIdx] = fopen(pFileName,"wb");
+        if(pFile[ampIdx] == NULL)
+            printf("Error to open output file\n");
+    }
+    if(pFile[ampIdx])
+        fwrite(pBuffer,1,Size,pFile[ampIdx]);
+}
+
+/**
+ * 
+ * <b>FUNCTION: </b>
+ *
+ * void close_TS_file(int ampIdx)
+ *
+ * <b>DESCRIPTION: </b>
+ *      Get PMT table
+ *
+ * 
+ * @param
+ *      int ampIdx
+ * @return 
+ *      void
+**/
+void close_TS_file(int ampIdx)
+{
+    if(pFile[ampIdx])
+        fclose(pFile[ampIdx]);
+    pFile[ampIdx] = NULL;
+}
+
+
+
+/********************************************************************************************************************
+ ** Thread for dtv **************************************************************************************************
+ ********************************************************************************************************************/
+
+/**
+ * 
+ * <b>FUNCTION: </b>
+ *
+ * DirectThread *DFBCreateThread( DirectThreadType      thread_type,
+ *							  DirectThreadMainFunc  thread_main,
+ *							  void                 *arg,
+ *							  const char           *name )
+ *
+ * <b>DESCRIPTION: </b>
+ *      Create a thread
+ *
+ * 
+ * @param
+ *  	DirectThreadType      thread_type,
+ *  	DirectThreadMainFunc thread_main,
+ *  	void arg,
+ * 		const char *name
+ * @return 
+ *      DirectThread *thread
+**/
+DirectThread *DFBCreateThread( DirectThreadType      thread_type,
+							  DirectThreadMainFunc  thread_main,
+							  void                 *arg,
+							  const char           *name )
+{
+	return direct_thread_create(DTT_DEFAULT, (DirectThreadMainFunc)thread_main, arg, name);
+}
+
+
+
+
+/**
+ * 
+ * <b>FUNCTION: </b>
+ *
+ * void DFBJoinThread(DirectThread *thread)
+ *
+ * <b>DESCRIPTION: </b>
+ *      Join a thread
+ *
+ * 
+ * @param
+ *      int ampIdx
+ * @return 
+ *      DirectThread *thread
+**/
+void DFBJoinThread(DirectThread *thread)
+{
+	direct_thread_join(thread);
+}
+
+
+
+
+/**
+ * 
+ * <b>FUNCTION: </b>
+ *
+ * void DFBDestroyThread(DirectThread *thread)
+ *
+ * <b>DESCRIPTION: </b>
+ *      Destroy a thread
+ *
+ * 
+ * @param
+ *      int ampIdx
+ * @return 
+ *      DirectThread *thread
+**/
+void DFBDestroyThread(DirectThread *thread)
+{
+	direct_thread_destroy(thread);
+}
+
+#ifdef WITH_SUBTITLE
+/**
+ * 
+ * <b>FUNCTION: </b>
+ *
+ * struct RUA* get_pRUA_globals()
+ *
+ * <b>DESCRIPTION: </b>
+ * 		Get pRUA global
+ * 
+ * @param
+ *  	void
+ * @return 
+ *      struct RUA*
+**/
+struct RUA* get_pRUA_globals(void)
+{
+   return ampGlobals->pRUA;
+}
+
+/**
+ * 
+ * <b>FUNCTION: </b>
+ *
+ * void enable_second_window_on_osd()
+ *
+ * <b>DESCRIPTION: </b>
+ *      Enable subtitle window on osd
+ *  
+ * @param
+ *  	void
+ * @return 
+ *      void
+**/
+void enable_second_window_on_osd(void)
+{
+	if(surface_osd_subtitle)
+	{
+		surface_osd_subtitle->Release(surface_osd_subtitle);
+	}
+	if(window_osd_subtitle)
+	{
+		window_osd_subtitle->Release(window_osd_subtitle);
+	}
+	DFBSurfaceDescription sdsc_stt;
+	DFBWindowDescription desc_stt; //for subtitle only
+
+	//for stt
+	sdsc_stt.width = SEC_WINDOW_ON_OSD_WIDTH;
+	sdsc_stt.height = SEC_WINDOW_ON_OSD_HEIGHT;	
+	desc_stt.posx = SEC_WINDOW_ON_OSD_POSX;
+	desc_stt.posy = SEC_WINDOW_ON_OSD_POSY;
+	desc_stt.width = sdsc_stt.width;
+	desc_stt.height = sdsc_stt.height;
+	desc_stt.flags = (DFBWindowDescriptionFlags)(DWDESC_POSX | DWDESC_POSY | DWDESC_WIDTH | DWDESC_HEIGHT);
+	if(!layer)
+		return;
+	layer->CreateWindow( layer, &desc_stt, &window_osd_subtitle );
+	window_osd_subtitle->GetSurface( window_osd_subtitle, &surface_osd_subtitle );
+	window_osd_subtitle->SetOpacity( window_osd_subtitle, 0xFF);
+	//end
+}
+
+/**
+ * 
+ * <b>FUNCTION: </b>
+ *
+ * void disable_second_window_on_osd()
+ *
+ * <b>DESCRIPTION: </b>
+ *      Disable subtitle window on osd
+ * 
+ * @param
+ *  	void
+ * @return 
+ *      void
+**/
+void disable_second_window_on_osd(void)
+{
+	if(surface_osd_subtitle)
+	{
+		surface_osd_subtitle->Release(surface_osd_subtitle);
+		surface_osd_subtitle = NULL;
+	}
+	if(window_osd_subtitle)
+	{
+		window_osd_subtitle->Release(window_osd_subtitle);
+		window_osd_subtitle = NULL;
+	}
+}
+
+/**
+ * 
+ * <b>FUNCTION: </b>
+ *
+ * void set_raise_to_top(int windowosd)
+ *
+ * <b>DESCRIPTION: </b>
+ *      Make the window at the top
+ * 
+ * @param
+ *  	int windowosd
+ * @return 
+ *      void
+**/
+void set_raise_to_top(int windowosd)
+{
+	switch(windowosd){
+    case 1:
+		window_osd1->RaiseToTop(window_osd1);
+		break;
+    case 2:
+		window_osd_subtitle->RaiseToTop(window_osd_subtitle);
+		break;
+	}
+}
+
+/**
+ * 
+ * <b>FUNCTION: </b>
+ *
+ * void clear_stt_region()
+ *
+ * <b>DESCRIPTION: </b>
+ * 		Clear STT Region
+ * 
+ * @param
+ *  	void
+ * @return 
+ *      void
+**/
+void clear_stt_region(void)
+{
+	if(surface_osd_subtitle ==  NULL)
+		return;
+	surface_osd_subtitle->SetColor(surface_osd_subtitle, 0x00, 0x00, 0x00, 0x00);
+    surface_osd_subtitle->FillRectangle(surface_osd_subtitle, 0, 0, SEC_WINDOW_ON_OSD_WIDTH, SEC_WINDOW_ON_OSD_HEIGHT);
+	surface_osd_subtitle->Flip(surface_osd_subtitle, NULL, (DFBSurfaceFlipFlags)0);
+}
+
+/**
+ * 
+ * <b>FUNCTION: </b>
+ *
+ * void clear_rec(RMuint16 x, RMuint16 y, RMuint16 width, RMuint16 height)
+ *
+ * <b>DESCRIPTION: </b>
+ * 		Clear Rectangle (x,y,width,height)
+ * 
+ * @param
+ *  	RMuint16 x: 		x-coordinate
+ *		RMuint16 y: 		y-coordinate
+ *		RMuint16 width:     width of rectangle
+ *		RMuint16 height:    height of rectangle
+ * @return 
+ *      void
+**/
+void clear_rec(RMuint16 x, RMuint16 y, RMuint16 width, RMuint16 height)
+{
+	DFBRegion  region;
+	RMuint32 	w, h;
+
+	if (surface_osd_subtitle ==  NULL) {
+		printf("Error: surface_osd_subtitle == NULL \n");
+		return;
+	}
+		
+    convert_coordinate(&x, &y);
+	if(belong_to_sec_window_on_osd(x, y, width, height) == FALSE)
+	{
+		printf("Error: BelongToSecWindowOnOSD == FALSE \n");
+		return;
+	}
+	//scale up subtitle's picture size
+	w 	= SCALE_UP(width);
+	h	= SCALE_UP(height);
+
+	region.x1 = x;
+	region.y1 = y;
+	region.x2 = x + w;
+	region.y2 = y + h;
+
+	surface_osd_subtitle->SetColor(surface_osd_subtitle, 0x00, 0x00, 0x00, 0x00);
+	surface_osd_subtitle->FillRectangle(surface_osd_subtitle, x, y, w, h);
+	surface_osd_subtitle->Flip(surface_osd_subtitle, &region, (DFBSurfaceFlipFlags)0);
+}
+
+/**
+ * 
+ * <b>FUNCTION: </b>
+ *
+ * draw_picture_data(RMuint16 x, RMuint16 y, RMuint16 width, RMuint16 height, 
+ *						RMuint32 *pData)
+ *
+ * <b>DESCRIPTION: </b>
+ * 		Draw Picture
+ * 
+ * @param
+ *  	RMuint16 x: 		x-coordinate
+ *		RMuint16 y: 		y-coordinate
+ *		RMuint16 width:     width of rectangle
+ *		RMuint16 height:    height of rectangle
+ *      RMuint32 *pData:    picture data
+ * 
+ * @return 
+ *      void
+**/
+void draw_picture_data(RMuint16 x, RMuint16 y, RMuint16 width, RMuint16 height, RMuint32 *pData)
+{ 
+	if(surface_osd_subtitle == NULL)
+		return;
+    DFBResult err;
+	DFBRegion  region;
+	DFBRectangle  rec;
+	int pitch;
+	RMuint32 *_pData;
+	RMuint32 w, h;
+	DFBSurfaceDescription offscreen_dsc;
+	offscreen_dsc.flags = (DFBSurfaceDescriptionFlags)(DSDESC_CAPS | DSDESC_WIDTH | DSDESC_HEIGHT | DSDESC_PIXELFORMAT);
+	offscreen_dsc.caps = DSCAPS_VIDEOONLY;
+	offscreen_dsc.width = width; 
+	offscreen_dsc.height = height;  
+    offscreen_dsc.pixelformat = DSPF_ARGB;
+
+    convert_coordinate(&x, &y); 
+    
+	if(belong_to_sec_window_on_osd(x, y, width, height) == FALSE)
+	{
+		printf("\n \033[31m Invalid region: Cannot display subtitle (x:%d,y:%d) (width:%d, height:%d) !!! \033[0m\n",
+			   x, y, width, height);
+		return;
+	}
+
+	//scale up subtitle's picture size
+	w 	= SCALE_UP(width);
+	h	= SCALE_UP(height);
+
+	region.x1 = x;
+	region.y1 = y;
+	region.x2 = x + w;
+	region.y2 = y + h;
+
+	rec.x = x;
+	rec.y = y;
+	rec.w = w;
+	rec.h = h;
+	gdfb->CreateSurface (gdfb, &offscreen_dsc, &stt_offscreen_surface); //create an offcreen buffer for STT
+	stt_offscreen_surface->Lock(stt_offscreen_surface, DSLF_WRITE, (void **)&_pData, &pitch);
+	memcpy(_pData, pData, width*height*sizeof(RMuint32));
+	stt_offscreen_surface->Unlock(stt_offscreen_surface);
+	DFBCHECK(stt_offscreen_surface->StretchBlit(surface_osd_subtitle, stt_offscreen_surface, NULL, &rec));
+	surface_osd_subtitle->Flip(surface_osd_subtitle, &region, (DFBSurfaceFlipFlags)0);
+	stt_offscreen_surface->Release(stt_offscreen_surface);
+}
+
+/**
+ * 
+ * <b>FUNCTION: </b>
+ *
+ * void convert_coordinate(RMuint16 *x, RMuint16 *y)
+ *
+ * <b>DESCRIPTION: </b>
+ * 		
+ * 
+ * @param
+ *      RMuint16 *x: 		x-coordinate
+ *      RMuint16 *y: 		y-coordinate
+ * 
+ * @return 
+ *      void
+**/
+void convert_coordinate(RMuint16 *x, RMuint16 *y)
+{
+	//old coordinate	720x560
+	//current one		1920x1080
+	//the old position of subtitle fits the  old coordinate so have to adjust it to fix the current one
+
+    RMuint16 temp_y = *y;
+	if(*y <= SUBTITLE_HEIGHT && *x <= SUBTITLE_WIDTH)
+	{
+        *y = (temp_y*SEC_WINDOW_ON_OSD_HEIGHT)/SUBTITLE_HEIGHT;
+	    *x = (SEC_WINDOW_ON_OSD_WIDTH - SUBTITLE_WIDTH)/2 + *x - SEC_WINDOW_ON_OSD_POSX + 41;
+	}
+	//PhuNguyen add
+	if(*y > 100 + 41)
+		*y 	=  *y - 100;
+	if(*x > 200 + 41)
+		*x 	=  *x - 200;
+}
+
+/**
+ * 
+ * <b>FUNCTION: </b>
+ *
+ * bool belong_to_sec_window_on_osd(RMuint16 x, RMuint16 y, RMuint16 width, RMuint16 height)
+ *
+ * <b>DESCRIPTION: </b>
+ * 		
+ * 
+ * @param
+ *      RMuint16 x: 		x-coordinate
+ *      RMuint16 y: 		y-coordinate
+ *      RMuint16 width
+ *      RMuint16 height
+ * 
+ * @return 
+ *      bool
+**/
+bool belong_to_sec_window_on_osd(RMuint16 x, RMuint16 y, RMuint16 width, RMuint16 height)
+{
+	if(y < SEC_WINDOW_ON_OSD_HEIGHT && x < SEC_WINDOW_ON_OSD_WIDTH)
+		return TRUE;
+   	return FALSE;
+}
+
+#endif      // WITH_SUBTITLE
+/*
+void reset_media_command_def()
+{
+	memset(&m_MediaRuntimeCMd, 0, sizeof(m_MediaRuntimeCMd));
+	m_MediaRuntimeCMd.defParam1 = 0;
+	m_MediaRuntimeCMd.defParam2 = 0;
+	m_MediaRuntimeCMd.defParam3 = 0;
+}
+*/
+void set_volume(RMuint8 ampIndex, enum EAdjustment adjustment, RMuint8 value)
+{
+	//reset_media_command_def();
+	m_MediaRuntimeCMd.cmd = Cmd_Adjust;
+	m_MediaRuntimeCMd.selKey = DIKS_MUTE ;
+	m_MediaRuntimeCMd.defParam2 = adjustment;
+    m_MediaRuntimeCMd.defParam1 = value;
+	m_MediaRuntimeCMd.selKeyType = media_evt->input.type;
+	handle_media_keys(ampIndex,m_MediaRuntimeCMd);
+}
+
+void SetVolumeDTV(RMuint8 volume)
+{
+	isDolbyChannel = FALSE;
+	cur_volume = volume;
+	printf("\n \033[31m SetVolumeDTV cur_volume = %d\033[0m ",cur_volume);
+	SetVolumeNoMSP(volume);
+	return;
+}
+
+void SetVolumeDTVForDolby(RMuint8 volume)
+{
+	isDolbyChannel = TRUE;
+	cur_volume = volume;
+	printf("\n \033[31m SetVolumeDTV cur_volume = %d\033[0m ",cur_volume);
+	SetVolumeNoMSPForDolby(volume);
+	return;
+}
+
+void reset_volume(void)
+{
+	printf("\n \033[31m start reset_volume cur_volume = %d\033[0m ",cur_volume);
+	SetVolumeNoMSP(cur_volume);
+	printf("\n \033[31m end reset_volume cur_volume = %d\033[0m ",cur_volume);
+	return;
+}
+
+
+RMstatus reset_timersync(void)
+{
+	RMstatus error;
+	enum EMhwlibTimerSync 	TimerSync;
+	TimerSync = EMhwlibTimerSync_FirstPcrSetStc;
+	
+	error = RUASetProperty(ampGlobals->pRUA, DemuxTask, RMDemuxTaskPropertyID_TimerSync, &TimerSync, sizeof(TimerSync), 0);
+	if (error != RM_OK) {  
+		//printf("\n \033[31m reset_timersync error\033[0m\n");
+		return TRESULT_ERROR | RESULT_FAILURE;
+	}
+	//printf("\n \033[31m reset_timersync ok\033[0m\n");
+	return RM_OK;
+}
