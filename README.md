@@ -25,10 +25,7 @@ Ref
 	git pull
 	
 4. uitility
-	git status		# merge conflict
-
-	
-	
-	
+	git status				# merge conflict
+	git checkout -- <file> 	# Get file which was deleted at local
 	
 	
