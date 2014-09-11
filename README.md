@@ -1,13 +1,9 @@
 CLibrary
 ========
+	git clone https://github.com/dangvanuy/CLibrary.git
+	
 Ref
 	http://www.cplusplus.com/reference/multithreading/
-
-
-I. Lenh Git
-
-git init
-
 
 1. Add new directory:
 	git add -- directory  		# or git add *
@@ -27,6 +23,9 @@ git init
 
 3. Get code
 	git pull
+	
+4. uitility
+	git status		# merge conflict
 
 	
 	
