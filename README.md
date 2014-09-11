@@ -10,30 +10,23 @@ git init
 
 
 1. Add new directory:
-	git add -- directory
-	git push -u origin master
+	git add -- directory  		# or git add *
 	git commit
+	git push -u origin master
 
-	#if git push error <(gnome-ssh-askpass:23214): Gtk-WARNING **: cannot open display:>
-	#please run: unset SSH_ASKPASS and try
+	if git push error <(gnome-ssh-askpass:23214): Gtk-WARNING **: cannot open display:>
+	please run: unset SSH_ASKPASS and try
 
 
 2. Modify and up code to github.com
 	git checkout		#Compare different
 	git diff			#Get different
-	git add -- file		#or git add *
+	git commit -a		#Commit all file which was modified
 	git fush
-	git commit
+		it need account: R1-dangvanuy.it@gmail.com
 
-	#Check different file:
-	git checkout
-	ex:
-	[uydang@sv-linuxcentos71 CLibrary]$ git checkout
-	M       thread/readme.txt
-
-	#lay code ve khi file local bi mat
-	git checkout -- file
-		vidu: git checkout -- mtest.c
+3. Get code
+	git pull
 
 	
 	
