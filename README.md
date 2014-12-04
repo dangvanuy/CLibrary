@@ -18,7 +18,7 @@ Ref
 	git checkout		#Compare different
 	git diff			#Get different
 	git commit -a		#Commit all file which was modified
-	git fush
+	git push
 		it need account: R1-dangvanuy.it@gmail.com
 
 3. Get code

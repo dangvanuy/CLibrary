@@ -46,3 +46,4 @@ int main()
 
 
 //gcc -o sched_priority sched_priority.c -lpthread
+
